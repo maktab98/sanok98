@@ -1,0 +1,424 @@
+<!-- ================================================================
+     INDEX.HTML — O'quvchi ko'radigan sahifa
+     ================================================================
+     Bu fayl Google Apps Script loyihasida "index" (index.html) nomi
+     bilan saqlanadi. U google.script.run orqali Code.gs bilan
+     gaplashadi (Supabase yoki boshqa tashqi server kerak emas).
+
+     QANDAY ISHLAYDI (qisqacha):
+       1) Sahifa ochilganda tasodifiy son va topshiriq chiqadi
+          (masalan: "1011 (ikkilik) sonini o'nlik sanoq sistemasiga
+          o'tkazing").
+       2) O'quvchi javobni katakka yozadi va "Tekshirish" tugmasini
+          bosadi (yoki Enter tugmasini bosadi).
+       3) Tugma vaqtincha o'chadi, "Yuborilmoqda..." deb yoziladi.
+       4) Code.gs orqali Google Sheets jadvaliga yozuv qo'shiladi,
+          natija (TO'G'RI / XATO) ekranda ko'rsatiladi.
+       5) Pastdagi "So'nggi urinishlar" ro'yxati yangilanadi.
+       6) Tugma "Keyingi savol" ga aylanadi, bosilsa yangi son chiqadi.
+================================================================ -->
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sanoq sistemalari mashqi</title>
+  <style>
+    /* ---------- Umumiy ko'rinish: sodda va katta harfli ---------- */
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fb;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .karta {
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 32px;
+      width: 100%;
+      max-width: 560px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 26px;
+      color: #1f2937;
+      margin-bottom: 4px;
+    }
+    .topshiriq {
+      font-size: 18px;
+      color: #374151;
+      margin: 16px 0 8px 0;
+    }
+    /* ---------- O'rtadagi KATTA son ---------- */
+    .katta-son {
+      font-size: 64px;
+      font-weight: bold;
+      color: #2563eb;
+      margin: 10px 0 24px 0;
+      word-break: break-all;
+    }
+    /* ---------- Javob katagi ---------- */
+    #javobKataги, #javobKatagi {
+      width: 100%;
+      font-size: 24px;
+      padding: 14px;
+      text-align: center;
+      border: 2px solid #9ca3af;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    /* ---------- Asosiy tugma ---------- */
+    #asosiyTugma {
+      width: 100%;
+      font-size: 22px;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #2563eb;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    #asosiyTugma:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+    /* ---------- Natija xabari ---------- */
+    .natija {
+      margin-top: 18px;
+      font-size: 22px;
+      font-weight: bold;
+      min-height: 30px;
+    }
+    .natija.togri { color: #16a34a; }
+    .natija.xato { color: #dc2626; }
+    /* ---------- Xatolik xabari (server/tarmoq) ---------- */
+    .xato-xabar {
+      margin-top: 14px;
+      font-size: 15px;
+      color: #dc2626;
+      background: #fee2e2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 10px;
+      display: none;
+    }
+    /* ---------- So'nggi urinishlar ro'yxati ---------- */
+    .royxat-blok {
+      margin-top: 28px;
+      width: 100%;
+      max-width: 560px;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 24px;
+    }
+    .royxat-blok h2 {
+      font-size: 18px;
+      color: #1f2937;
+      margin-top: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: center;
+    }
+    th {
+      color: #6b7280;
+      font-weight: normal;
+    }
+    .royxat-togri { color: #16a34a; font-weight: bold; }
+    .royxat-xato { color: #dc2626; font-weight: bold; }
+    .bosh-xabar {
+      color: #6b7280;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="karta">
+    <h1>Sanoq sistemalari mashqi</h1>
+    <div class="topshiriq" id="topshiriqMatni">Yuklanmoqda...</div>
+
+    <!-- O'rtadagi katta son shu yerda chiqadi -->
+    <div class="katta-son" id="kattaSon">—</div>
+
+    <!-- Javob yoziladigan bitta katak -->
+    <input
+      type="text"
+      id="javobKatagi"
+      placeholder="Javobni shu yerga yozing"
+      inputmode="numeric"
+      autocomplete="off"
+    >
+
+    <!-- Bitta asosiy tugma: avval "Tekshirish", keyin "Keyingi savol" -->
+    <button id="asosiyTugma">Tekshirish</button>
+
+    <!-- Natija (TO'G'RI / XATO) shu yerda chiqadi -->
+    <div class="natija" id="natijaMatni"></div>
+
+    <!-- Server yoki tarmoq xatosi bo'lsa, shu yerda ko'rinadi -->
+    <div class="xato-xabar" id="xatoXabar"></div>
+  </div>
+
+  <div class="royxat-blok">
+    <h2>So'nggi urinishlar</h2>
+    <div id="royxatJoyi">
+      <p class="bosh-xabar">Yuklanmoqda...</p>
+    </div>
+  </div>
+
+<script>
+  /* ========================================================
+     1-QADAM: Kerakli elementlarni o'zgaruvchilarga olib olamiz
+     ======================================================== */
+  const topshiriqMatni = document.getElementById('topshiriqMatni');
+  const kattaSon       = document.getElementById('kattaSon');
+  const javobKatagi    = document.getElementById('javobKatagi');
+  const asosiyTugma    = document.getElementById('asosiyTugma');
+  const natijaMatni    = document.getElementById('natijaMatni');
+  const xatoXabar      = document.getElementById('xatoXabar');
+  const royxatJoyi     = document.getElementById('royxatJoyi');
+
+  // Hozirgi savol ma'lumotlari shu obyektda saqlanadi
+  let hozirgiSavol = null;
+
+  // Tugma holati: "tekshirish" yoki "keyingi"
+  let tugmaHolati = 'tekshirish';
+
+  /* ========================================================
+     2-QADAM: Yangi savol yaratish (tasodifiy son + asos)
+     ======================================================== */
+  function yangiSavolYarat() {
+    // Mashq qilinadigan asoslar: 2 (ikkilik), 8 (sakkizlik), 16 (o'n oltilik)
+    const asoslar = [2, 8, 16];
+    const asos = asoslar[Math.floor(Math.random() * asoslar.length)];
+
+    // Yo'nalishni tasodifiy tanlaymiz: asosdan -> 10ga, yoki 10dan -> asosga
+    const yonalish = Math.random() < 0.5 ? 'asosdanOnga' : 'ondanAsosga';
+
+    let sonOnlikda, korsatilganSon, togriJavob, asosNomi, matn;
+
+    // Asos nomini o'zbekcha yozamiz (topshiriq matni uchun)
+    if (asos === 2) asosNomi = 'ikkilik';
+    else if (asos === 8) asosNomi = 'sakkizlik';
+    else asosNomi = 'o\'n oltilik';
+
+    if (yonalish === 'asosdanOnga') {
+      // 1 dan 255 gacha o'nlik son tanlaymiz, keyin uni kerakli asosga o'giramiz
+      sonOnlikda = Math.floor(Math.random() * 255) + 1;
+      korsatilganSon = sonOnlikda.toString(asos).toUpperCase();
+      togriJavob = String(sonOnlikda);
+      matn = korsatilganSon + ' (' + asosNomi + ') sonini O\'NLIK sanoq sistemasiga o\'tkazing:';
+    } else {
+      // Avval o'nlik son tanlaymiz, uni asosga o'giramiz, keyin shuni savol qilib beramiz
+      sonOnlikda = Math.floor(Math.random() * 255) + 1;
+      korsatilganSon = sonOnlikda.toString(asos).toUpperCase();
+      togriJavob = korsatilganSon;
+      matn = sonOnlikda + ' (o\'nlik) sonini ' + asosNomi.toUpperCase() + ' sanoq sistemasiga o\'tkazing:';
+    }
+
+    hozirgiSavol = {
+      son: korsatilganSon + (yonalish === 'asosdanOnga' ? '' : ''), // ko'rsatish uchun son pastda alohida belgilanadi
+      asos: asos,
+      yonalish: yonalish,
+      togriJavob: togriJavob
+    };
+
+    // Ekranga chiqarish
+    topshiriqMatni.textContent = matn;
+    kattaSon.textContent = (yonalish === 'asosdanOnga') ? korsatilganSon : sonOnlikda;
+
+    // Saqlash uchun "son" maydonini ham to'g'ri qiymat bilan belgilaymiz
+    hozirgiSavol.son = (yonalish === 'asosdanOnga') ? korsatilganSon : sonOnlikda;
+
+    // Javob katagini tozalab, fokusni shu yerga qo'yamiz
+    javobKatagi.value = '';
+    javobKatagi.disabled = false;
+    javobKatagi.focus();
+
+    // Oldingi natija va xatolarni tozalaymiz
+    natijaMatni.textContent = '';
+    natijaMatni.className = 'natija';
+    xatoXabar.style.display = 'none';
+    xatoXabar.textContent = '';
+
+    // Tugmani asl holatiga qaytaramiz
+    tugmaHolati = 'tekshirish';
+    asosiyTugma.textContent = 'Tekshirish';
+    asosiyTugma.disabled = false;
+  }
+
+  /* ========================================================
+     3-QADAM: Javobni tekshirish va Code.gs ga yuborish
+     ======================================================== */
+  function javobniTekshir() {
+    const kiritilganJavob = javobKatagi.value.trim();
+
+    // Bo'sh maydonni yuborishdan oldin tekshiramiz
+    if (kiritilganJavob === '') {
+      xatoXabar.textContent = 'Iltimos, javobni yozing.';
+      xatoXabar.style.display = 'block';
+      return;
+    }
+
+    // Katta-kichik harf farqi bo'lmasligi uchun solishtirish
+    const togriMi = kiritilganJavob.toUpperCase() === String(hozirgiSavol.togriJavob).toUpperCase();
+
+    // Natijani ekranda darhol ko'rsatamiz
+    if (togriMi) {
+      natijaMatni.textContent = 'TO\'G\'RI!';
+      natijaMatni.className = 'natija togri';
+    } else {
+      natijaMatni.textContent = 'XATO. To\'g\'ri javob: ' + hozirgiSavol.togriJavob;
+      natijaMatni.className = 'natija xato';
+    }
+
+    // Tugma va javob katagini vaqtincha o'chiramiz, "Yuborilmoqda..." deb yozamiz
+    asosiyTugma.disabled = true;
+    javobKatagi.disabled = true;
+    asosiyTugma.textContent = 'Yuborilmoqda...';
+    xatoXabar.style.display = 'none';
+
+    // Yuborilayotgan ma'lumot
+    const malumot = {
+      son: hozirgiSavol.son,
+      asos: hozirgiSavol.asos,
+      togriJavob: hozirgiSavol.togriJavob,
+      oquvchiJavobi: kiritilganJavob,
+      natija: togriMi ? 'TOGRI' : 'XATO'
+    };
+
+    // Tarmoq juda sekin bo'lsa ham dastur "qotib" qolmasligi uchun
+    // 15 soniyalik ogohlantiruvchi taymer qo'yamiz
+    let javobKeldi = false;
+    const taymer = setTimeout(function () {
+      if (!javobKeldi) {
+        xatoXabar.textContent = 'Server javob bermayapti. Internet aloqasini tekshiring (javob kelishi mumkin, biroz kuting).';
+        xatoXabar.style.display = 'block';
+      }
+    }, 15000);
+
+    // Code.gs dagi saqlashNatija() funksiyasini chaqiramiz
+    google.script.run
+      .withSuccessHandler(function (javob) {
+        javobKeldi = true;
+        clearTimeout(taymer);
+
+        if (javob && javob.success) {
+          // Saqlash muvaffaqiyatli bo'ldi — ro'yxatni yangilaymiz
+          royxatniYangila();
+        } else {
+          // Code.gs o'zi xatolik qaytargan bo'lsa
+          xatoXabar.textContent = 'Xatolik: ' + (javob && javob.error ? javob.error : 'Noma\'lum xatolik');
+          xatoXabar.style.display = 'block';
+        }
+        // Tugmani "Keyingi savol" holatiga o'tkazamiz
+        tugmaHolati = 'keyingi';
+        asosiyTugma.textContent = 'Keyingi savol';
+        asosiyTugma.disabled = false;
+      })
+      .withFailureHandler(function (xato) {
+        javobKeldi = true;
+        clearTimeout(taymer);
+
+        // Tarmoq yoki server xatosi — xato.message ko'rsatiladi
+        xatoXabar.textContent = 'Xatolik: ' + (xato && xato.message ? xato.message : String(xato));
+        xatoXabar.style.display = 'block';
+
+        // Baribir keyingi savolga o'tish imkonini beramiz
+        tugmaHolati = 'keyingi';
+        asosiyTugma.textContent = 'Keyingi savol';
+        asosiyTugma.disabled = false;
+      })
+      .saqlashNatija(malumot);
+  }
+
+  /* ========================================================
+     4-QADAM: So'nggi urinishlar ro'yxatini Code.gs dan olib,
+     jadval ko'rinishida ko'rsatish
+     ======================================================== */
+  function royxatniYangila() {
+    google.script.run
+      .withSuccessHandler(function (javob) {
+        if (!javob || !javob.success) {
+          royxatJoyi.innerHTML = '<p class="bosh-xabar">Xatolik: ' +
+            (javob && javob.error ? javob.error : 'Ro\'yxatni olib bo\'lmadi') + '</p>';
+          return;
+        }
+
+        const yozuvlar = javob.yozuvlar || [];
+
+        if (yozuvlar.length === 0) {
+          royxatJoyi.innerHTML = '<p class="bosh-xabar">Hozircha yozuv yo\'q</p>';
+          return;
+        }
+
+        // Jadval qurib chiqamiz
+        let html = '<table><tr><th>Vaqt</th><th>Son</th><th>Asos</th>' +
+          '<th>To\'g\'ri javob</th><th>Javob</th><th>Natija</th></tr>';
+
+        yozuvlar.forEach(function (y) {
+          const natijaKlass = (y.natija === 'TOGRI') ? 'royxat-togri' : 'royxat-xato';
+          const natijaMatniQisqa = (y.natija === 'TOGRI') ? 'To\'g\'ri' : 'Xato';
+          html += '<tr>' +
+            '<td>' + y.vaqt + '</td>' +
+            '<td>' + y.son + '</td>' +
+            '<td>' + y.asos + '</td>' +
+            '<td>' + y.togriJavob + '</td>' +
+            '<td>' + y.oquvchiJavobi + '</td>' +
+            '<td class="' + natijaKlass + '">' + natijaMatniQisqa + '</td>' +
+            '</tr>';
+        });
+
+        html += '</table>';
+        royxatJoyi.innerHTML = html;
+      })
+      .withFailureHandler(function (xato) {
+        royxatJoyi.innerHTML = '<p class="bosh-xabar">Xatolik: ' +
+          (xato && xato.message ? xato.message : String(xato)) + '</p>';
+      })
+      .oxirgiYozuvlarniOl();
+  }
+
+  /* ========================================================
+     5-QADAM: Tugma bosilganda qaysi amal bajarilishini aniqlash
+     ======================================================== */
+  asosiyTugma.addEventListener('click', function () {
+    if (tugmaHolati === 'tekshirish') {
+      javobniTekshir();
+    } else {
+      yangiSavolYarat();
+    }
+  });
+
+  // Enter tugmasi bosilganda ham "Tekshirish" ishlasin
+  javobKatagi.addEventListener('keydown', function (hodisa) {
+    if (hodisa.key === 'Enter' && tugmaHolati === 'tekshirish') {
+      javobniTekshir();
+    }
+  });
+
+  /* ========================================================
+     6-QADAM: Sahifa birinchi ochilganda ishga tushadigan amallar
+     ======================================================== */
+  window.addEventListener('DOMContentLoaded', function () {
+    yangiSavolYarat();   // birinchi savolni chiqaramiz
+    royxatniYangila();   // mavjud yozuvlarni Google Sheets'dan o'qib ko'rsatamiz
+  });
+</script>
+
+</body>
+</html>
